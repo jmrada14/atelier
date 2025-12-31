@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { usePieces } from '../hooks/usePieces'
 import PieceCard from '../components/PieceCard'
 import PieceModal from '../components/PieceModal'
+import TimelineModal from '../components/TimelineModal'
+import MoveToInventoryModal from '../components/MoveToInventoryModal'
 
 const FILTERS = [
   { key: 'all', label: 'All Pieces' },
@@ -11,10 +13,12 @@ const FILTERS = [
 ]
 
 function Dashboard() {
-  const { pieces, addPiece, updatePiece, deletePiece, addNote, deleteNote } = usePieces()
+  const { pieces, addPiece, updatePiece, deletePiece, addNote, deleteNote, addImage, deleteImage } = usePieces()
   const [activeFilter, setActiveFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingPiece, setEditingPiece] = useState(null)
+  const [timelinePiece, setTimelinePiece] = useState(null)
+  const [moveToInventoryPiece, setMoveToInventoryPiece] = useState(null)
 
   const filteredPieces = useMemo(() => {
     if (activeFilter === 'all') return pieces
@@ -49,6 +53,32 @@ function Dashboard() {
 
   const handleStatusChange = (id, newStatus) => {
     updatePiece(id, { status: newStatus })
+  }
+
+  const handleMoveToInventory = (piece) => {
+    setMoveToInventoryPiece(piece)
+  }
+
+  const handleConfirmMoveToInventory = (inventoryData) => {
+    // Add to inventory
+    const artworks = JSON.parse(localStorage.getItem('artworks') || '[]')
+    const newArtwork = {
+      id: Date.now(),
+      title: inventoryData.title,
+      medium: inventoryData.medium,
+      yearCompleted: inventoryData.yearCompleted,
+      price: inventoryData.price,
+      location: inventoryData.location,
+      thumbnailUrl: inventoryData.thumbnailUrl || 'https://picsum.photos/seed/' + Date.now() + '/300/300',
+      highResUrl: inventoryData.highResUrl || inventoryData.thumbnailUrl || 'https://picsum.photos/seed/' + Date.now() + '/2000/2000',
+      archived: false,
+    }
+    artworks.unshift(newArtwork)
+    localStorage.setItem('artworks', JSON.stringify(artworks))
+
+    // Remove from pieces
+    deletePiece(moveToInventoryPiece.id)
+    setMoveToInventoryPiece(null)
   }
 
   return (
@@ -107,6 +137,10 @@ function Dashboard() {
             onStatusChange={(status) => handleStatusChange(piece.id, status)}
             onAddNote={(text) => addNote(piece.id, text)}
             onDeleteNote={(noteId) => deleteNote(piece.id, noteId)}
+            onAddImage={(imageData) => addImage(piece.id, imageData)}
+            onDeleteImage={(imageId) => deleteImage(piece.id, imageId)}
+            onViewTimeline={(piece) => setTimelinePiece(piece)}
+            onMoveToInventory={handleMoveToInventory}
           />
         ))}
         <button className="add-piece-card" onClick={handleAddPiece}>
@@ -126,6 +160,21 @@ function Dashboard() {
             setModalOpen(false)
             setEditingPiece(null)
           }}
+        />
+      )}
+
+      {timelinePiece && (
+        <TimelineModal
+          piece={timelinePiece}
+          onClose={() => setTimelinePiece(null)}
+        />
+      )}
+
+      {moveToInventoryPiece && (
+        <MoveToInventoryModal
+          piece={moveToInventoryPiece}
+          onConfirm={handleConfirmMoveToInventory}
+          onClose={() => setMoveToInventoryPiece(null)}
         />
       )}
     </>

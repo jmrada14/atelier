@@ -28,6 +28,7 @@ export function usePieces() {
       status: pieceData.status || 'not-started',
       type: pieceData.type,
       notes: pieceData.notes || [],
+      images: pieceData.images || [],
       createdAt: new Date().toISOString(),
     }
     setPieces(prev => [newPiece, ...prev])
@@ -82,6 +83,36 @@ export function usePieces() {
     }))
   }
 
+  const addImage = (pieceId, imageData) => {
+    setPieces(prev => prev.map(piece => {
+      if (piece.id === pieceId) {
+        const newImage = {
+          id: generateId(),
+          url: imageData.url,
+          caption: imageData.caption || '',
+          createdAt: new Date().toISOString(),
+        }
+        return {
+          ...piece,
+          images: [...(piece.images || []), newImage]
+        }
+      }
+      return piece
+    }))
+  }
+
+  const deleteImage = (pieceId, imageId) => {
+    setPieces(prev => prev.map(piece => {
+      if (piece.id === pieceId) {
+        return {
+          ...piece,
+          images: (piece.images || []).filter(img => img.id !== imageId)
+        }
+      }
+      return piece
+    }))
+  }
+
   return {
     pieces,
     addPiece,
@@ -90,5 +121,7 @@ export function usePieces() {
     addNote,
     updateNote,
     deleteNote,
+    addImage,
+    deleteImage,
   }
 }
