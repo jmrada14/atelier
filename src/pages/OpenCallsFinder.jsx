@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useOpenCalls } from '../hooks/useOpenCalls'
+import { useOpenCalls, DATA_SOURCES } from '../hooks/useOpenCalls'
 import CallCard from '../components/CallCard'
 
 const FILTERS = [
@@ -328,10 +328,28 @@ function OpenCallsFinder() {
 
       {lastFetched && (
         <div className="calls-footer">
-          <p>
-            Data sourced from NYFA and partner galleries.
+          <p className="calls-footer-text">
+            Data sourced from {Object.keys(DATA_SOURCES).length}+ trusted art platforms.
             Last updated: {new Date(lastFetched).toLocaleString()}
           </p>
+          <div className="data-sources">
+            <span className="sources-label">Sources:</span>
+            <div className="sources-list">
+              {Object.values(DATA_SOURCES).slice(0, 6).map((source, idx) => (
+                <a
+                  key={source.name}
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="source-link"
+                  style={{ '--source-color': source.color }}
+                >
+                  {source.name}
+                </a>
+              ))}
+              <span className="sources-more">+ more</span>
+            </div>
+          </div>
         </div>
       )}
     </>

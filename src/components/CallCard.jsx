@@ -108,7 +108,12 @@ function CallCard({ call, onBookmark, onApply, onHide, onViewDetails }) {
           {getRecommendationBadge()}
         </div>
         <h3 className="call-title">{call.title}</h3>
-        <p className="call-org">{call.organization}</p>
+        <div className="call-org-row">
+          <p className="call-org">{call.organization}</p>
+          {call.source && (
+            <span className="call-source">via {call.source}</span>
+          )}
+        </div>
       </header>
 
       <div className="call-meta">
