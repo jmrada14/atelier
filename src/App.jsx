@@ -1,6 +1,5 @@
 import { Routes, Route, Link } from 'react-router-dom'
-import Home from './pages/Home'
-import About from './pages/About'
+import Dashboard from './pages/Dashboard'
 import Materials from './pages/Materials'
 import Inventory from './pages/Inventory'
 
@@ -8,17 +7,21 @@ function App() {
   return (
     <div className="app">
       <nav>
-        <Link to="/">Home</Link>
-        <Link to="/inventory">Inventory</Link>
-        <Link to="/materials">Materials</Link>
-        <Link to="/about">About</Link>
+        <div className="nav-brand">
+          <h1>Atelier</h1>
+          <span>studio companion</span>
+        </div>
+        <div className="nav-links">
+          <Link to="/">Studio</Link>
+          <Link to="/inventory">Inventory</Link>
+          <Link to="/materials">Materials</Link>
+        </div>
       </nav>
       <main>
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<Dashboard />} />
           <Route path="/inventory" element={<Inventory />} />
           <Route path="/materials" element={<Materials />} />
-          <Route path="/about" element={<About />} />
         </Routes>
       </main>
     </div>
