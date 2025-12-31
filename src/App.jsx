@@ -5,6 +5,7 @@ import Inventory from './pages/Inventory'
 import Collectors from './pages/Collectors'
 import Reminders from './pages/Reminders'
 import Newsletter from './pages/Newsletter'
+import OpenCallsFinder from './pages/OpenCallsFinder'
 
 function App() {
   const location = useLocation()
@@ -37,6 +38,9 @@ function App() {
           <Link to="/newsletter" className={location.pathname === '/newsletter' ? 'active' : ''}>
             Newsletter
           </Link>
+          <Link to="/open-calls" className={location.pathname === '/open-calls' ? 'active' : ''}>
+            Open Calls
+          </Link>
         </div>
       </nav>
       <main>
@@ -47,6 +51,7 @@ function App() {
           <Route path="/collectors" element={<Collectors />} />
           <Route path="/reminders" element={<Reminders />} />
           <Route path="/newsletter" element={<Newsletter />} />
+          <Route path="/open-calls" element={<OpenCallsFinder />} />
         </Routes>
       </main>
     </div>
