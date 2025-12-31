@@ -5,6 +5,9 @@ import { CollectorProvider } from './context/CollectorContext'
 import App from './App'
 import './index.css'
 
+// Import scraper for console testing (exposes window.openCallsScraper)
+import './services/openCallsScraper'
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>

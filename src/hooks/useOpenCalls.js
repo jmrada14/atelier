@@ -146,6 +146,16 @@ export function useOpenCalls() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedCalls))
   }, [savedCalls])
 
+  // Application status options
+  const APPLICATION_STATUSES = [
+    { value: 'preparing', label: 'Preparing', color: '#6b7280' },
+    { value: 'submitted', label: 'Submitted', color: '#3b82f6' },
+    { value: 'under-review', label: 'Under Review', color: '#f59e0b' },
+    { value: 'accepted', label: 'Accepted', color: '#10b981' },
+    { value: 'rejected', label: 'Rejected', color: '#ef4444' },
+    { value: 'waitlisted', label: 'Waitlisted', color: '#8b5cf6' },
+  ]
+
   // Persist preferences
   useEffect(() => {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences))
@@ -163,7 +173,9 @@ export function useOpenCalls() {
         applied: savedData.applied || false,
         hidden: savedData.hidden || false,
         notes: savedData.notes || '',
-        applicationStatus: savedData.applicationStatus || null, // 'submitted', 'accepted', 'rejected', 'waitlisted'
+        applicationStatus: savedData.applicationStatus || null,
+        checklist: savedData.checklist || [],
+        submissionDate: savedData.submissionDate || null,
         ...recommendation,
       }
     }).sort((a, b) => b.score - a.score) // Sort by recommendation score
@@ -1093,9 +1105,19 @@ export function useOpenCalls() {
     setSavedCalls(prev => {
       const existing = prev.find(s => s.id === callId)
       if (existing) {
-        return prev.map(s => s.id === callId ? { ...s, applied: true, applicationStatus: status } : s)
+        return prev.map(s => s.id === callId ? {
+          ...s,
+          applied: true,
+          applicationStatus: status,
+          submissionDate: new Date().toISOString()
+        } : s)
       }
-      return [...prev, { id: callId, applied: true, applicationStatus: status }]
+      return [...prev, {
+        id: callId,
+        applied: true,
+        applicationStatus: status,
+        submissionDate: new Date().toISOString()
+      }]
     })
   }
 
@@ -1104,6 +1126,67 @@ export function useOpenCalls() {
     setSavedCalls(prev => prev.map(s =>
       s.id === callId ? { ...s, applicationStatus: status } : s
     ))
+  }
+
+  // Update checklist for a call
+  const updateChecklist = (callId, checklist) => {
+    setSavedCalls(prev => {
+      const existing = prev.find(s => s.id === callId)
+      if (existing) {
+        return prev.map(s => s.id === callId ? { ...s, checklist } : s)
+      }
+      return [...prev, { id: callId, checklist }]
+    })
+  }
+
+  // Generate calendar event URL (Google Calendar)
+  const getGoogleCalendarUrl = (call) => {
+    if (!call.deadline) return null
+    const deadline = new Date(call.deadline)
+    const startDate = deadline.toISOString().replace(/-|:|\.\d+/g, '').slice(0, 8)
+    const endDate = startDate // Same day
+    const title = encodeURIComponent(`Deadline: ${call.title}`)
+    const details = encodeURIComponent(`Open Call: ${call.title}\nOrganization: ${call.organization}\nType: ${call.type}\n\nURL: ${call.url || 'N/A'}`)
+    const location = encodeURIComponent(call.location || '')
+
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}&location=${location}`
+  }
+
+  // Generate ICS file content for Apple Calendar / Outlook
+  const generateICSFile = (call) => {
+    if (!call.deadline) return null
+    const deadline = new Date(call.deadline)
+    const dateStr = deadline.toISOString().replace(/-|:|\.\d+/g, '').slice(0, 8)
+
+    const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Atelier//Open Calls//EN
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:${dateStr}
+DTEND;VALUE=DATE:${dateStr}
+SUMMARY:Deadline: ${call.title}
+DESCRIPTION:Open Call: ${call.title}\\nOrganization: ${call.organization}\\nType: ${call.type}\\n\\nURL: ${call.url || 'N/A'}
+LOCATION:${call.location || ''}
+END:VEVENT
+END:VCALENDAR`
+
+    return ics
+  }
+
+  // Download ICS file
+  const downloadICS = (call) => {
+    const ics = generateICSFile(call)
+    if (!ics) return
+
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${call.title.replace(/[^a-z0-9]/gi, '_')}_deadline.ics`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   // Hide a call
@@ -1152,15 +1235,19 @@ export function useOpenCalls() {
     preferences,
     loading,
     lastFetched,
+    APPLICATION_STATUSES,
 
     // Actions
     fetchOpenCalls,
     toggleBookmark,
     markApplied,
     updateApplicationStatus,
+    updateChecklist,
     toggleHidden,
     updateCallNotes,
     updatePreferences,
     addCustomCall,
+    getGoogleCalendarUrl,
+    downloadICS,
   }
 }

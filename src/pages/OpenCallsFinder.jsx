@@ -40,8 +40,12 @@ function OpenCallsFinder() {
     fetchOpenCalls,
     toggleBookmark,
     markApplied,
+    updateApplicationStatus,
+    updateChecklist,
     toggleHidden,
     updatePreferences,
+    getGoogleCalendarUrl,
+    downloadICS,
   } = useOpenCalls()
 
   const [activeFilter, setActiveFilter] = useState('all')
@@ -313,6 +317,10 @@ function OpenCallsFinder() {
               onBookmark={toggleBookmark}
               onApply={markApplied}
               onHide={toggleHidden}
+              onUpdateStatus={updateApplicationStatus}
+              onUpdateChecklist={updateChecklist}
+              onAddToGoogleCalendar={getGoogleCalendarUrl}
+              onDownloadICS={downloadICS}
             />
           ))}
         </div>

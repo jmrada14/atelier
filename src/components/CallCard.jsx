@@ -40,6 +40,24 @@ const TYPE_ICONS = {
   ),
 }
 
+const APPLICATION_STATUSES = [
+  { value: 'preparing', label: 'Preparing', color: '#6b7280' },
+  { value: 'submitted', label: 'Submitted', color: '#3b82f6' },
+  { value: 'under-review', label: 'Under Review', color: '#f59e0b' },
+  { value: 'accepted', label: 'Accepted', color: '#10b981' },
+  { value: 'rejected', label: 'Rejected', color: '#ef4444' },
+  { value: 'waitlisted', label: 'Waitlisted', color: '#8b5cf6' },
+]
+
+const DEFAULT_CHECKLIST = [
+  { id: 'images', label: 'Artwork images prepared', checked: false },
+  { id: 'statement', label: 'Artist statement updated', checked: false },
+  { id: 'cv', label: 'CV/Resume ready', checked: false },
+  { id: 'bio', label: 'Artist bio written', checked: false },
+  { id: 'description', label: 'Work descriptions complete', checked: false },
+  { id: 'fee', label: 'Entry fee paid', checked: false },
+]
+
 function formatDeadline(dateString) {
   if (!dateString) return null
 
@@ -75,9 +93,32 @@ function formatDeadline(dateString) {
   return { formatted, label, urgency, diffDays, isClosed: diffDays < 0 }
 }
 
-function CallCard({ call, onBookmark, onApply, onHide, onViewDetails }) {
+function CallCard({
+  call,
+  onBookmark,
+  onApply,
+  onHide,
+  onUpdateStatus,
+  onUpdateChecklist,
+  onAddToGoogleCalendar,
+  onDownloadICS
+}) {
   const [expanded, setExpanded] = useState(false)
+  const [showStatusMenu, setShowStatusMenu] = useState(false)
+  const [showCalendarMenu, setShowCalendarMenu] = useState(false)
+  const [showChecklist, setShowChecklist] = useState(false)
+
   const deadlineInfo = formatDeadline(call.deadline)
+  const checklist = call.checklist?.length > 0 ? call.checklist : DEFAULT_CHECKLIST
+  const checklistProgress = checklist.filter(item => item.checked).length
+  const statusInfo = APPLICATION_STATUSES.find(s => s.value === call.applicationStatus)
+
+  const handleChecklistToggle = (itemId) => {
+    const updatedChecklist = checklist.map(item =>
+      item.id === itemId ? { ...item, checked: !item.checked } : item
+    )
+    onUpdateChecklist?.(call.id, updatedChecklist)
+  }
 
   const getRecommendationBadge = () => {
     if (call.recommendation === 'highly-recommended') {
@@ -138,7 +179,7 @@ function CallCard({ call, onBookmark, onApply, onHide, onViewDetails }) {
             <line x1="12" y1="1" x2="12" y2="23" />
             <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
           </svg>
-          <span>{call.entryFee === 0 ? 'Free' : `$${call.entryFee} fee`}</span>
+          <span>{call.entryFee === 0 ? 'Free' : call.entryFee ? `$${call.entryFee} fee` : 'Fee varies'}</span>
         </div>
       </div>
 
@@ -192,13 +233,95 @@ function CallCard({ call, onBookmark, onApply, onHide, onViewDetails }) {
         </div>
       )}
 
+      {/* Application Status Section */}
       {call.applied && (
-        <div className="call-applied-status">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-            <polyline points="22 4 12 14.01 9 11.01" />
-          </svg>
-          <span>Applied{call.applicationStatus ? ` - ${call.applicationStatus}` : ''}</span>
+        <div className="call-application-status">
+          <div className="status-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <span>Application Status</span>
+          </div>
+          <div className="status-controls">
+            <div className="status-dropdown">
+              <button
+                className="status-current"
+                onClick={() => setShowStatusMenu(!showStatusMenu)}
+                style={{ '--status-color': statusInfo?.color || '#6b7280' }}
+              >
+                <span className="status-dot" style={{ background: statusInfo?.color || '#6b7280' }}></span>
+                {statusInfo?.label || 'Set Status'}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {showStatusMenu && (
+                <div className="status-menu">
+                  {APPLICATION_STATUSES.map(status => (
+                    <button
+                      key={status.value}
+                      className={`status-option ${call.applicationStatus === status.value ? 'active' : ''}`}
+                      onClick={() => {
+                        onUpdateStatus?.(call.id, status.value)
+                        setShowStatusMenu(false)
+                      }}
+                    >
+                      <span className="status-dot" style={{ background: status.color }}></span>
+                      {status.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              className={`checklist-toggle ${showChecklist ? 'active' : ''}`}
+              onClick={() => setShowChecklist(!showChecklist)}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+              </svg>
+              {checklistProgress}/{checklist.length}
+            </button>
+          </div>
+
+          {/* Submission Checklist */}
+          {showChecklist && (
+            <div className="submission-checklist">
+              <div className="checklist-header">
+                <span>Submission Checklist</span>
+                <span className="checklist-progress">
+                  {Math.round((checklistProgress / checklist.length) * 100)}% complete
+                </span>
+              </div>
+              <div className="checklist-items">
+                {checklist.map(item => (
+                  <label key={item.id} className={`checklist-item ${item.checked ? 'checked' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={item.checked}
+                      onChange={() => handleChecklistToggle(item.id)}
+                    />
+                    <span className="checkmark">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </span>
+                    <span className="checklist-label">{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {call.submissionDate && (
+            <div className="submission-date">
+              Submitted {new Date(call.submissionDate).toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric'
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -212,6 +335,55 @@ function CallCard({ call, onBookmark, onApply, onHide, onViewDetails }) {
             <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
           </svg>
         </button>
+
+        {/* Calendar Sync */}
+        {!deadlineInfo?.isClosed && call.deadline && (
+          <div className="calendar-dropdown">
+            <button
+              className="action-btn calendar"
+              onClick={() => setShowCalendarMenu(!showCalendarMenu)}
+              title="Add to calendar"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+            </button>
+            {showCalendarMenu && (
+              <div className="calendar-menu">
+                <a
+                  href={onAddToGoogleCalendar?.(call)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="calendar-option"
+                  onClick={() => setShowCalendarMenu(false)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.5 4.5h-2.25V3a.75.75 0 00-1.5 0v1.5h-7.5V3a.75.75 0 00-1.5 0v1.5H4.5A1.5 1.5 0 003 6v13.5A1.5 1.5 0 004.5 21h15a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5zM4.5 6h15v2.25H4.5V6zm0 13.5V9.75h15v9.75H4.5z"/>
+                  </svg>
+                  Google Calendar
+                </a>
+                <button
+                  className="calendar-option"
+                  onClick={() => {
+                    onDownloadICS?.(call)
+                    setShowCalendarMenu(false)
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Download .ics (Apple/Outlook)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           className="action-btn"
           onClick={() => setExpanded(!expanded)}
@@ -224,9 +396,9 @@ function CallCard({ call, onBookmark, onApply, onHide, onViewDetails }) {
             target="_blank"
             rel="noopener noreferrer"
             className="action-btn primary"
-            onClick={() => onApply?.(call.id)}
+            onClick={() => !call.applied && onApply?.(call.id)}
           >
-            Apply
+            {call.applied ? 'View' : 'Apply'}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
               <polyline points="15 3 21 3 21 9" />
