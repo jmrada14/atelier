@@ -4628,18 +4628,32 @@ button:active {
 
 .auth-error {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-sm);
   padding: var(--space-md);
-  background: rgba(201, 42, 42, 0.08);
-  border: 1px solid rgba(201, 42, 42, 0.2);
+  background: rgba(201, 42, 42, 0.1);
+  border: 1px solid rgba(201, 42, 42, 0.3);
   border-radius: var(--radius-md);
   color: var(--alizarin);
   font-size: 0.875rem;
+  line-height: 1.5;
+  animation: errorSlideIn 0.3s var(--ease-out);
+}
+
+@keyframes errorSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .auth-error svg {
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .form-group {

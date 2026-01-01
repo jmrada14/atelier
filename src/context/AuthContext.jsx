@@ -58,7 +58,26 @@ export function AuthProvider({ children }) {
       setSessionToken(result.sessionToken)
       return { success: true, user: result.user }
     } catch (error) {
-      return { success: false, error: error.message }
+      // Parse Convex error messages to user-friendly format
+      let errorMessage = error.message || 'Signup failed'
+
+      // Clean up Convex error formatting
+      if (errorMessage.includes('Uncaught Error:')) {
+        errorMessage = errorMessage.replace('Uncaught Error:', '').trim()
+      }
+
+      // Handle specific error cases
+      if (errorMessage.toLowerCase().includes('email already registered')) {
+        errorMessage = 'This email is already registered. Please sign in instead.'
+      } else if (errorMessage.toLowerCase().includes('invalid email')) {
+        errorMessage = 'Please enter a valid email address.'
+      } else if (errorMessage.toLowerCase().includes('password must be')) {
+        errorMessage = 'Password must be at least 6 characters long.'
+      } else if (errorMessage.toLowerCase().includes('network')) {
+        errorMessage = 'Network error. Please check your connection and try again.'
+      }
+
+      return { success: false, error: errorMessage }
     }
   }, [signupMutation])
 
@@ -74,7 +93,22 @@ export function AuthProvider({ children }) {
       return { success: true, user: result.user }
     } catch (error) {
       console.error('Login error:', error)
-      return { success: false, error: error.message || 'Login failed' }
+      // Parse Convex error messages to user-friendly format
+      let errorMessage = error.message || 'Login failed'
+
+      // Clean up Convex error formatting
+      if (errorMessage.includes('Uncaught Error:')) {
+        errorMessage = errorMessage.replace('Uncaught Error:', '').trim()
+      }
+
+      // Handle specific error cases
+      if (errorMessage.toLowerCase().includes('invalid email or password')) {
+        errorMessage = 'Invalid email or password. Please check your credentials and try again.'
+      } else if (errorMessage.toLowerCase().includes('network')) {
+        errorMessage = 'Network error. Please check your connection and try again.'
+      }
+
+      return { success: false, error: errorMessage }
     }
   }, [loginMutation])
 

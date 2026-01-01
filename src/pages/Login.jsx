@@ -19,6 +19,13 @@ function Login() {
     setError('')
     setIsSubmitting(true)
 
+    // Client-side validation
+    if (!email || !password) {
+      setError('Please enter both email and password')
+      setIsSubmitting(false)
+      return
+    }
+
     const result = await login({ email, password })
 
     if (result.success) {
