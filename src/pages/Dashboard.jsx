@@ -12,7 +12,6 @@ const FILTERS = [
   { key: 'all', label: 'All Pieces' },
   { key: 'commission', label: 'Commissions' },
   { key: 'gallery', label: 'Gallery' },
-  { key: 'exploration', label: 'Exploration' },
 ]
 
 function Dashboard() {

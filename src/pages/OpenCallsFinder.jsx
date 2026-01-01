@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useOpenCalls, DATA_SOURCES } from '../hooks/useOpenCalls'
 import CallCard from '../components/CallCard'
+import LocationInput from '../components/LocationInput'
 
 const FILTERS = [
   { key: 'all', label: 'All Calls' },
@@ -161,12 +162,10 @@ function OpenCallsFinder() {
           <div className="preferences-grid">
             <div className="pref-section">
               <label className="pref-label">Your Location</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g., Brooklyn, NY"
+              <LocationInput
                 value={preferences.location || ''}
-                onChange={(e) => updatePreferences({ location: e.target.value })}
+                onChange={(value) => updatePreferences({ location: value })}
+                placeholder="e.g., Brooklyn, NY"
               />
             </div>
 

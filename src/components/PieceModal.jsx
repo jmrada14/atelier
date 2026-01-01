@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react'
 const PIECE_TYPES = [
   { value: 'commission', label: 'Commission' },
   { value: 'gallery', label: 'Gallery Piece' },
-  { value: 'exploration', label: 'Exploration' },
 ]
 
 const STATUS_OPTIONS = [
@@ -17,7 +16,7 @@ function PieceModal({ piece, onSave, onClose }) {
     title: '',
     deadline: '',
     status: 'not-started',
-    type: 'exploration',
+    type: 'gallery',
     notes: [],
     images: [],
   })
@@ -31,7 +30,7 @@ function PieceModal({ piece, onSave, onClose }) {
         title: piece.title || '',
         deadline: piece.deadline || '',
         status: piece.status || 'not-started',
-        type: piece.type || 'exploration',
+        type: piece.type || 'gallery',
         notes: piece.notes || [],
         images: piece.images || [],
       })

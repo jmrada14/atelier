@@ -3,6 +3,7 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { useAuth } from '../context/AuthContext'
 import ArtCard from '../components/ArtCard'
+import LocationInput from '../components/LocationInput'
 
 function AddArtworkModal({ onSave, onClose, isSaving }) {
   const [formData, setFormData] = useState({
@@ -159,21 +160,19 @@ function AddArtworkModal({ onSave, onClose, isSaving }) {
                 type="number"
                 id="price"
                 className="form-input"
-                value={formData.price}
-                onChange={(e) => setFormData(prev => ({ ...prev, price: parseInt(e.target.value) || 0 }))}
+                value={formData.price === 0 ? '' : formData.price}
+                onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value === '' ? 0 : parseInt(e.target.value) || 0 }))}
                 min="0"
+                placeholder="0"
               />
             </div>
           </div>
 
           <div className="form-group">
             <label className="form-label" htmlFor="location">Location</label>
-            <input
-              type="text"
-              id="location"
-              className="form-input"
+            <LocationInput
               value={formData.location}
-              onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+              onChange={(value) => setFormData(prev => ({ ...prev, location: value }))}
               placeholder="e.g., Studio, Gallery Downtown, Storage"
             />
           </div>

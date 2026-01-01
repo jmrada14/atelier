@@ -583,22 +583,14 @@ function Materials() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Color Code</label>
-                  <div className="color-input-wrapper">
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={formData.colorCode}
-                      onChange={(e) => setFormData({ ...formData, colorCode: e.target.value })}
-                      placeholder="e.g., PY37 or #FFD700"
-                    />
-                    <input
-                      type="color"
-                      className="color-picker"
-                      value={formData.colorCode.startsWith('#') ? formData.colorCode : '#ffffff'}
-                      onChange={(e) => setFormData({ ...formData, colorCode: e.target.value })}
-                    />
-                  </div>
+                  <label className="form-label">Color Name</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formData.colorCode}
+                    onChange={(e) => setFormData({ ...formData, colorCode: e.target.value })}
+                    placeholder="e.g., Cadmium Red, Ultramarine Blue"
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Size</label>
