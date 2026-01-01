@@ -1,11 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
-
-const STORAGE_KEY = 'atelier-open-calls'
-const PREFERENCES_KEY = 'atelier-artist-preferences'
-const FETCHED_CALLS_KEY = 'atelier-fetched-calls'
-const LAST_FETCH_KEY = 'atelier-last-fetch'
-
-const generateId = () => `call-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import { useAuth } from '../context/AuthContext'
 
 // External data sources for open calls
 export const DATA_SOURCES = {
@@ -116,35 +112,36 @@ function calculateRecommendationScore(call, preferences) {
 }
 
 export function useOpenCalls() {
-  // Load saved calls (bookmarked, applied, hidden)
-  const [savedCalls, setSavedCalls] = useState(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      return stored ? JSON.parse(stored) : []
-    } catch {
-      return []
-    }
-  })
+  const { sessionToken, user } = useAuth()
 
-  // Artist preferences for recommendations
-  const [preferences, setPreferences] = useState(() => {
-    try {
-      const stored = localStorage.getItem(PREFERENCES_KEY)
-      return stored ? { ...defaultPreferences, ...JSON.parse(stored) } : defaultPreferences
-    } catch {
-      return defaultPreferences
-    }
-  })
+  // Convex queries
+  const savedStates = useQuery(
+    api.openCalls.getSavedStates,
+    sessionToken ? { sessionToken } : "skip"
+  ) || []
 
-  // Sample open calls data (in production, this would come from NYFA API or web scraping)
+  const customCalls = useQuery(
+    api.openCalls.getCustomCalls,
+    sessionToken ? { sessionToken } : "skip"
+  ) || []
+
+  // Convex mutations
+  const saveCallStateMutation = useMutation(api.openCalls.saveCallState)
+  const createCustomCallMutation = useMutation(api.openCalls.createCustomCall)
+  const updateCustomCallMutation = useMutation(api.openCalls.updateCustomCall)
+  const deleteCustomCallMutation = useMutation(api.openCalls.deleteCustomCall)
+  const updatePreferencesMutation = useMutation(api.openCalls.updatePreferences)
+
+  // Get preferences from user profile
+  const preferences = useMemo(() => {
+    if (!user?.artistProfile) return defaultPreferences
+    return { ...defaultPreferences, ...user.artistProfile }
+  }, [user])
+
+  // Loading state for curated calls
   const [openCalls, setOpenCalls] = useState([])
   const [loading, setLoading] = useState(false)
   const [lastFetched, setLastFetched] = useState(null)
-
-  // Persist saved calls
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedCalls))
-  }, [savedCalls])
 
   // Application status options
   const APPLICATION_STATUSES = [
@@ -156,15 +153,34 @@ export function useOpenCalls() {
     { value: 'waitlisted', label: 'Waitlisted', color: '#8b5cf6' },
   ]
 
-  // Persist preferences
-  useEffect(() => {
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences))
-  }, [preferences])
-
   // Merge open calls with saved status and calculate recommendations
   const enrichedCalls = useMemo(() => {
-    return openCalls.map(call => {
-      const savedData = savedCalls.find(s => s.id === call.id) || {}
+    // Combine curated calls with custom calls
+    const allCalls = [
+      ...openCalls,
+      ...customCalls.map(c => ({
+        id: c.id,
+        title: c.title,
+        organization: c.organization,
+        location: c.location,
+        deadline: c.deadline,
+        entryFee: c.entryFee,
+        description: c.description,
+        mediums: c.mediums || [],
+        theme: c.theme,
+        eligibility: c.eligibility,
+        prizes: c.prizes,
+        url: c.url,
+        source: 'Custom',
+        featured: false,
+        type: c.type,
+        openDate: c.createdAt,
+        isCustom: true,
+      }))
+    ]
+
+    return allCalls.map(call => {
+      const savedData = savedStates.find(s => s.callId === call.id) || {}
       const recommendation = calculateRecommendationScore(call, preferences)
 
       return {
@@ -179,7 +195,7 @@ export function useOpenCalls() {
         ...recommendation,
       }
     }).sort((a, b) => b.score - a.score) // Sort by recommendation score
-  }, [openCalls, savedCalls, preferences])
+  }, [openCalls, customCalls, savedStates, preferences])
 
   // Curated open calls data from real sources (web search aggregated)
   // Updated regularly from: NYFA, CaFÉ, Artwork Archive, ArtCall.org, Res Artis, Creative Capital, etc.
@@ -1079,64 +1095,72 @@ export function useOpenCalls() {
     setOpenCalls(activeCalls)
     setLastFetched(new Date().toISOString())
     setLoading(false)
-
-    // Cache the fetched calls
-    try {
-      localStorage.setItem(FETCHED_CALLS_KEY, JSON.stringify(activeCalls))
-      localStorage.setItem(LAST_FETCH_KEY, new Date().toISOString())
-    } catch (e) {
-      console.warn('Could not cache fetched calls:', e)
-    }
   }, [getCuratedOpenCalls])
 
+  // Initial fetch on mount
+  useEffect(() => {
+    if (sessionToken) {
+      fetchOpenCalls()
+    }
+  }, [sessionToken, fetchOpenCalls])
+
   // Bookmark/unbookmark a call
-  const toggleBookmark = (callId) => {
-    setSavedCalls(prev => {
-      const existing = prev.find(s => s.id === callId)
-      if (existing) {
-        return prev.map(s => s.id === callId ? { ...s, bookmarked: !s.bookmarked } : s)
-      }
-      return [...prev, { id: callId, bookmarked: true }]
-    })
+  const toggleBookmark = async (callId) => {
+    if (!sessionToken) return
+    const existing = savedStates.find(s => s.callId === callId)
+    try {
+      await saveCallStateMutation({
+        sessionToken,
+        callId,
+        bookmarked: existing ? !existing.bookmarked : true,
+      })
+    } catch (error) {
+      console.error('Failed to toggle bookmark:', error)
+    }
   }
 
   // Mark as applied
-  const markApplied = (callId, status = 'submitted') => {
-    setSavedCalls(prev => {
-      const existing = prev.find(s => s.id === callId)
-      if (existing) {
-        return prev.map(s => s.id === callId ? {
-          ...s,
-          applied: true,
-          applicationStatus: status,
-          submissionDate: new Date().toISOString()
-        } : s)
-      }
-      return [...prev, {
-        id: callId,
+  const markApplied = async (callId, status = 'submitted') => {
+    if (!sessionToken) return
+    try {
+      await saveCallStateMutation({
+        sessionToken,
+        callId,
         applied: true,
         applicationStatus: status,
-        submissionDate: new Date().toISOString()
-      }]
-    })
+        submissionDate: new Date().toISOString(),
+      })
+    } catch (error) {
+      console.error('Failed to mark applied:', error)
+    }
   }
 
   // Update application status
-  const updateApplicationStatus = (callId, status) => {
-    setSavedCalls(prev => prev.map(s =>
-      s.id === callId ? { ...s, applicationStatus: status } : s
-    ))
+  const updateApplicationStatus = async (callId, status) => {
+    if (!sessionToken) return
+    try {
+      await saveCallStateMutation({
+        sessionToken,
+        callId,
+        applicationStatus: status,
+      })
+    } catch (error) {
+      console.error('Failed to update application status:', error)
+    }
   }
 
   // Update checklist for a call
-  const updateChecklist = (callId, checklist) => {
-    setSavedCalls(prev => {
-      const existing = prev.find(s => s.id === callId)
-      if (existing) {
-        return prev.map(s => s.id === callId ? { ...s, checklist } : s)
-      }
-      return [...prev, { id: callId, checklist }]
-    })
+  const updateChecklist = async (callId, checklist) => {
+    if (!sessionToken) return
+    try {
+      await saveCallStateMutation({
+        sessionToken,
+        callId,
+        checklist,
+      })
+    } catch (error) {
+      console.error('Failed to update checklist:', error)
+    }
   }
 
   // Generate calendar event URL (Google Calendar)
@@ -1190,43 +1214,87 @@ END:VCALENDAR`
   }
 
   // Hide a call
-  const toggleHidden = (callId) => {
-    setSavedCalls(prev => {
-      const existing = prev.find(s => s.id === callId)
-      if (existing) {
-        return prev.map(s => s.id === callId ? { ...s, hidden: !s.hidden } : s)
-      }
-      return [...prev, { id: callId, hidden: true }]
-    })
+  const toggleHidden = async (callId) => {
+    if (!sessionToken) return
+    const existing = savedStates.find(s => s.callId === callId)
+    try {
+      await saveCallStateMutation({
+        sessionToken,
+        callId,
+        hidden: existing ? !existing.hidden : true,
+      })
+    } catch (error) {
+      console.error('Failed to toggle hidden:', error)
+    }
   }
 
   // Add/update notes for a call
-  const updateCallNotes = (callId, notes) => {
-    setSavedCalls(prev => {
-      const existing = prev.find(s => s.id === callId)
-      if (existing) {
-        return prev.map(s => s.id === callId ? { ...s, notes } : s)
-      }
-      return [...prev, { id: callId, notes }]
-    })
+  const updateCallNotes = async (callId, notes) => {
+    if (!sessionToken) return
+    try {
+      await saveCallStateMutation({
+        sessionToken,
+        callId,
+        notes,
+      })
+    } catch (error) {
+      console.error('Failed to update notes:', error)
+    }
   }
 
   // Update artist preferences
-  const updatePreferences = (newPrefs) => {
-    setPreferences(prev => ({ ...prev, ...newPrefs }))
+  const updatePreferences = async (newPrefs) => {
+    if (!sessionToken) return
+    try {
+      await updatePreferencesMutation({
+        sessionToken,
+        preferences: newPrefs,
+      })
+    } catch (error) {
+      console.error('Failed to update preferences:', error)
+    }
   }
 
   // Add a custom call (manual entry)
-  const addCustomCall = (callData) => {
-    const newCall = {
-      id: generateId(),
-      ...callData,
-      source: 'Manual',
-      featured: false,
-      openDate: new Date().toISOString().split('T')[0],
+  const addCustomCall = async (callData) => {
+    if (!sessionToken) return null
+    try {
+      const result = await createCustomCallMutation({
+        sessionToken,
+        ...callData,
+      })
+      return result
+    } catch (error) {
+      console.error('Failed to add custom call:', error)
+      return null
     }
-    setOpenCalls(prev => [newCall, ...prev])
-    return newCall
+  }
+
+  // Update a custom call
+  const updateCustomCall = async (id, updates) => {
+    if (!sessionToken) return
+    try {
+      await updateCustomCallMutation({
+        sessionToken,
+        id,
+        ...updates,
+      })
+    } catch (error) {
+      console.error('Failed to update custom call:', error)
+    }
+  }
+
+  // Delete a custom call
+  const deleteCustomCall = async (id) => {
+    if (!sessionToken) return
+    try {
+      await deleteCustomCallMutation({
+        sessionToken,
+        id,
+      })
+    } catch (error) {
+      console.error('Failed to delete custom call:', error)
+    }
   }
 
   return {
@@ -1247,6 +1315,8 @@ END:VCALENDAR`
     updateCallNotes,
     updatePreferences,
     addCustomCall,
+    updateCustomCall,
+    deleteCustomCall,
     getGoogleCalendarUrl,
     downloadICS,
   }

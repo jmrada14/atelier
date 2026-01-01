@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import { useAuth } from '../context/AuthContext'
 import ArtCard from '../components/ArtCard'
-import { loadArtworks, saveArtworks } from '../data/artworks'
 
-function AddArtworkModal({ onSave, onClose }) {
+function AddArtworkModal({ onSave, onClose, isSaving }) {
   const [formData, setFormData] = useState({
     title: '',
     medium: '',
     yearCompleted: new Date().getFullYear(),
     price: 0,
     location: 'Studio',
-    thumbnailUrl: '',
+    imageFile: null,
+    imagePreview: '',
   })
   const fileInputRef = useRef(null)
 
@@ -24,20 +27,31 @@ function AddArtworkModal({ onSave, onClose }) {
   const handleImageUpload = (e) => {
     const file = e.target.files[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, thumbnailUrl: reader.result }))
-      }
-      reader.readAsDataURL(file)
+      const previewUrl = URL.createObjectURL(file)
+      setFormData(prev => ({
+        ...prev,
+        imageFile: file,
+        imagePreview: previewUrl,
+      }))
     }
+  }
+
+  const handleRemoveImage = () => {
+    if (formData.imagePreview) {
+      URL.revokeObjectURL(formData.imagePreview)
+    }
+    setFormData(prev => ({ ...prev, imageFile: null, imagePreview: '' }))
   }
 
   const handleSubmit = (e) => {
     e.preventDefault()
     onSave({
-      ...formData,
-      highResUrl: formData.thumbnailUrl || `https://picsum.photos/seed/${Date.now()}/2000/2000`,
-      thumbnailUrl: formData.thumbnailUrl || `https://picsum.photos/seed/${Date.now()}/300/300`,
+      title: formData.title,
+      medium: formData.medium,
+      yearCompleted: formData.yearCompleted,
+      price: formData.price,
+      location: formData.location,
+      imageFile: formData.imageFile,
     })
   }
 
@@ -58,14 +72,14 @@ function AddArtworkModal({ onSave, onClose }) {
           <div className="form-group">
             <label className="form-label">Artwork Image</label>
             <div className="image-upload">
-              {formData.thumbnailUrl ? (
+              {formData.imagePreview ? (
                 <div className="image-upload__preview">
                   <div className="image-upload__preview-item">
-                    <img src={formData.thumbnailUrl} alt="Preview" />
+                    <img src={formData.imagePreview} alt="Preview" />
                     <button
                       type="button"
                       className="image-upload__remove"
-                      onClick={() => setFormData(prev => ({ ...prev, thumbnailUrl: '' }))}
+                      onClick={handleRemoveImage}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <line x1="18" y1="6" x2="6" y2="18" />
@@ -165,11 +179,11 @@ function AddArtworkModal({ onSave, onClose }) {
           </div>
 
           <div className="form-actions">
-            <button type="button" className="action-btn" onClick={onClose}>
+            <button type="button" className="action-btn" onClick={onClose} disabled={isSaving}>
               Cancel
             </button>
-            <button type="submit" className="action-btn primary">
-              Add to Inventory
+            <button type="submit" className="action-btn primary" disabled={isSaving}>
+              {isSaving ? 'Adding...' : 'Add to Inventory'}
             </button>
           </div>
         </form>
@@ -179,32 +193,73 @@ function AddArtworkModal({ onSave, onClose }) {
 }
 
 function Inventory() {
-  const [artworks, setArtworks] = useState([])
+  const { sessionToken } = useAuth()
   const [filter, setFilter] = useState('active')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
-  useEffect(() => {
-    setArtworks(loadArtworks())
-  }, [])
+  // Convex queries and mutations
+  const artworks = useQuery(
+    api.artworks.list,
+    sessionToken ? { sessionToken } : "skip"
+  ) || []
 
-  const handleArchive = (id) => {
-    const updated = artworks.map((art) =>
-      art.id === id ? { ...art, archived: !art.archived } : art
-    )
-    setArtworks(updated)
-    saveArtworks(updated)
+  const createArtwork = useMutation(api.artworks.create)
+  const updateArtwork = useMutation(api.artworks.update)
+  const generateUploadUrl = useMutation(api.files.generateUploadUrl)
+
+  const handleArchive = async (id) => {
+    const artwork = artworks.find(a => a.id === id)
+    if (!artwork) return
+
+    try {
+      await updateArtwork({
+        sessionToken,
+        id,
+        archived: !artwork.archived,
+      })
+    } catch (error) {
+      console.error('Failed to archive artwork:', error)
+    }
   }
 
-  const handleAddArtwork = (artworkData) => {
-    const newArtwork = {
-      id: Date.now(),
-      ...artworkData,
-      archived: false,
+  const handleAddArtwork = async (artworkData) => {
+    setIsSaving(true)
+    try {
+      let storageId = undefined
+
+      // Upload image if provided
+      if (artworkData.imageFile) {
+        const uploadUrl = await generateUploadUrl({ sessionToken })
+        const result = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': artworkData.imageFile.type },
+          body: artworkData.imageFile,
+        })
+
+        if (!result.ok) {
+          throw new Error('Failed to upload image')
+        }
+
+        const json = await result.json()
+        storageId = json.storageId
+      }
+
+      await createArtwork({
+        sessionToken,
+        title: artworkData.title,
+        medium: artworkData.medium,
+        yearCompleted: artworkData.yearCompleted,
+        price: artworkData.price,
+        location: artworkData.location,
+        storageId,
+      })
+      setShowAddModal(false)
+    } catch (error) {
+      console.error('Failed to add artwork:', error)
+    } finally {
+      setIsSaving(false)
     }
-    const updated = [newArtwork, ...artworks]
-    setArtworks(updated)
-    saveArtworks(updated)
-    setShowAddModal(false)
   }
 
   const filteredArtworks = artworks.filter((art) => {
@@ -284,6 +339,7 @@ function Inventory() {
         <AddArtworkModal
           onSave={handleAddArtwork}
           onClose={() => setShowAddModal(false)}
+          isSaving={isSaving}
         />
       )}
     </div>

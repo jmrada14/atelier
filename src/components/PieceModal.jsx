@@ -61,17 +61,17 @@ function PieceModal({ piece, onSave, onClose }) {
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files)
     files.forEach(file => {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        const newImage = {
-          id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          url: reader.result,
-          caption: '',
-          createdAt: new Date().toISOString(),
-        }
-        setImageInputs(prev => [...prev, newImage])
+      // Create a preview URL for display
+      const previewUrl = URL.createObjectURL(file)
+      const newImage = {
+        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+        file, // Store the actual File object for upload
+        url: previewUrl, // Preview URL for display
+        caption: '',
+        createdAt: new Date().toISOString(),
+        isNew: true, // Flag to indicate this needs to be uploaded
       }
-      reader.readAsDataURL(file)
+      setImageInputs(prev => [...prev, newImage])
     })
     e.target.value = ''
   }

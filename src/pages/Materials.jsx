@@ -1,4 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import { useAuth } from '../context/AuthContext'
 
 const CATEGORIES = [
   { key: 'paints', label: 'Paints & Pigments', icon: '🎨' },
@@ -23,13 +26,13 @@ const PAINT_BRANDS = [
 ]
 
 function Materials() {
-  const [inventory, setInventory] = useState([])
-  const [wishlist, setWishlist] = useState([])
+  const { sessionToken } = useAuth()
   const [activeTab, setActiveTab] = useState('inventory')
   const [filterCategory, setFilterCategory] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
   const [showLowStockOnly, setShowLowStockOnly] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   // Form state for add/edit modal
   const [formData, setFormData] = useState({
@@ -46,20 +49,19 @@ function Materials() {
     notes: '',
   })
 
-  useEffect(() => {
-    const savedInventory = localStorage.getItem('artInventory')
-    const savedWishlist = localStorage.getItem('artWishlist')
-    if (savedInventory) setInventory(JSON.parse(savedInventory))
-    if (savedWishlist) setWishlist(JSON.parse(savedWishlist))
-  }, [])
+  // Convex queries and mutations
+  const allMaterials = useQuery(
+    api.materials.list,
+    sessionToken ? { sessionToken } : "skip"
+  ) || []
 
-  useEffect(() => {
-    localStorage.setItem('artInventory', JSON.stringify(inventory))
-  }, [inventory])
+  const createMaterial = useMutation(api.materials.create)
+  const updateMaterial = useMutation(api.materials.update)
+  const removeMaterial = useMutation(api.materials.remove)
 
-  useEffect(() => {
-    localStorage.setItem('artWishlist', JSON.stringify(wishlist))
-  }, [wishlist])
+  // Split materials into inventory and wishlist
+  const inventory = allMaterials.filter(m => !m.isWishlist)
+  const wishlist = allMaterials.filter(m => m.isWishlist)
 
   const resetForm = () => {
     setFormData({
@@ -89,92 +91,101 @@ function Materials() {
       name: item.name || '',
       category: item.category || 'other',
       quantity: item.quantity || 1,
-      lowStockThreshold: item.lowStockThreshold || 1,
+      lowStockThreshold: item.minQuantity || 1,
       brand: item.brand || '',
-      colorCode: item.colorCode || '',
-      size: item.size || '',
-      cost: item.cost || '',
-      purchaseDate: item.purchaseDate || '',
-      purchaseLink: item.purchaseLink || '',
+      colorCode: item.color || '',
+      size: item.unit || '',
+      cost: item.price || '',
+      purchaseDate: item.lastPurchased ? new Date(item.lastPurchased).toISOString().split('T')[0] : '',
+      purchaseLink: item.purchaseUrl || '',
       notes: item.notes || '',
     })
     setShowAddModal(true)
   }
 
-  const handleSaveItem = (e) => {
+  const handleSaveItem = async (e) => {
     e.preventDefault()
     if (!formData.name.trim()) return
 
-    const item = {
-      id: editingItem?.id || Date.now(),
-      name: formData.name.trim(),
-      category: formData.category,
-      quantity: Number(formData.quantity) || 1,
-      lowStockThreshold: Number(formData.lowStockThreshold) || 1,
-      brand: formData.brand,
-      colorCode: formData.colorCode,
-      size: formData.size,
-      cost: formData.cost ? Number(formData.cost) : null,
-      purchaseDate: formData.purchaseDate || null,
-      purchaseLink: formData.purchaseLink,
-      notes: formData.notes,
-      addedAt: editingItem?.addedAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
+    setIsSaving(true)
+    try {
+      const materialData = {
+        sessionToken,
+        name: formData.name.trim(),
+        category: formData.category,
+        brand: formData.brand || undefined,
+        color: formData.colorCode || undefined,
+        quantity: Number(formData.quantity) || 1,
+        unit: formData.size || undefined,
+        minQuantity: Number(formData.lowStockThreshold) || 1,
+        purchaseUrl: formData.purchaseLink || undefined,
+        price: formData.cost ? Number(formData.cost) : undefined,
+        isWishlist: activeTab === 'wishlist',
+        notes: formData.notes || undefined,
+      }
 
-    if (activeTab === 'inventory') {
       if (editingItem) {
-        setInventory(inventory.map(i => i.id === editingItem.id ? item : i))
+        await updateMaterial({
+          ...materialData,
+          id: editingItem.id,
+          lastPurchased: formData.purchaseDate ? new Date(formData.purchaseDate).getTime() : undefined,
+        })
       } else {
-        setInventory([item, ...inventory])
+        await createMaterial(materialData)
       }
-    } else {
-      if (editingItem) {
-        setWishlist(wishlist.map(i => i.id === editingItem.id ? item : i))
-      } else {
-        setWishlist([item, ...wishlist])
-      }
-    }
 
-    setShowAddModal(false)
-    resetForm()
-  }
-
-  const removeItem = (id, list) => {
-    if (list === 'inventory') {
-      setInventory(inventory.filter(item => item.id !== id))
-    } else {
-      setWishlist(wishlist.filter(item => item.id !== id))
+      setShowAddModal(false)
+      resetForm()
+    } catch (error) {
+      console.error('Failed to save material:', error)
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const moveToInventory = (item) => {
-    setWishlist(wishlist.filter(w => w.id !== item.id))
-    setInventory([{
-      ...item,
-      id: Date.now(),
-      addedAt: new Date().toISOString(),
-      quantity: item.quantity || 1,
-    }, ...inventory])
+  const removeItem = async (id) => {
+    try {
+      await removeMaterial({ sessionToken, id })
+    } catch (error) {
+      console.error('Failed to remove material:', error)
+    }
   }
 
-  const updateQuantity = (id, delta) => {
-    setInventory(inventory.map(item => {
-      if (item.id === id) {
-        const newQty = Math.max(0, (item.quantity || 1) + delta)
-        return { ...item, quantity: newQty }
-      }
-      return item
-    }))
+  const moveToInventory = async (item) => {
+    try {
+      await updateMaterial({
+        sessionToken,
+        id: item.id,
+        isWishlist: false,
+      })
+    } catch (error) {
+      console.error('Failed to move to inventory:', error)
+    }
+  }
+
+  const updateQuantity = async (id, delta) => {
+    const item = inventory.find(i => i.id === id)
+    if (!item) return
+
+    const newQty = Math.max(0, (item.quantity || 1) + delta)
+    try {
+      await updateMaterial({
+        sessionToken,
+        id,
+        quantity: newQty,
+      })
+    } catch (error) {
+      console.error('Failed to update quantity:', error)
+    }
   }
 
   // Calculate stats
   const stats = useMemo(() => {
     const lowStock = inventory.filter(item =>
-      (item.quantity || 1) <= (item.lowStockThreshold || 1)
+      (item.quantity || 1) <= (item.minQuantity || 1)
     )
     const totalValue = inventory.reduce((sum, item) =>
-      sum + ((item.cost || 0) * (item.quantity || 1)), 0
+      sum + ((item.price || 0) * (item.quantity || 1)), 0
     )
     const totalItems = inventory.reduce((sum, item) => sum + (item.quantity || 1), 0)
 
@@ -191,16 +202,16 @@ function Materials() {
 
     if (showLowStockOnly && activeTab === 'inventory') {
       result = result.filter(item =>
-        (item.quantity || 1) <= (item.lowStockThreshold || 1)
+        (item.quantity || 1) <= (item.minQuantity || 1)
       )
     }
 
     return result
   }, [currentList, filterCategory, showLowStockOnly, activeTab])
 
-  const formatDate = (dateString) => {
-    if (!dateString) return null
-    const date = new Date(dateString)
+  const formatDate = (timestamp) => {
+    if (!timestamp) return null
+    const date = new Date(timestamp)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
@@ -211,7 +222,7 @@ function Materials() {
 
   const getCategoryInfo = (key) => CATEGORIES.find(c => c.key === key) || CATEGORIES[4]
 
-  const isLowStock = (item) => (item.quantity || 1) <= (item.lowStockThreshold || 1)
+  const isLowStock = (item) => (item.quantity || 1) <= (item.minQuantity || 1)
 
   const getSearchUrl = (item, supplier) => {
     const searchTerm = encodeURIComponent(`${item.brand || ''} ${item.name}`.trim())
@@ -354,31 +365,31 @@ function Materials() {
                       )}
                     </div>
                     <div className="material-details">
-                      {item.colorCode && (
+                      {item.color && (
                         <span className="material-detail">
                           <span
                             className="color-swatch"
-                            style={{ backgroundColor: item.colorCode }}
+                            style={{ backgroundColor: item.color }}
                           />
-                          {item.colorCode}
+                          {item.color}
                         </span>
                       )}
-                      {item.size && (
-                        <span className="material-detail">{item.size}</span>
+                      {item.unit && (
+                        <span className="material-detail">{item.unit}</span>
                       )}
-                      {item.cost && (
+                      {item.price && (
                         <span className="material-detail cost">
-                          {formatCurrency(item.cost)}
+                          {formatCurrency(item.price)}
                           {activeTab === 'inventory' && item.quantity > 1 && (
                             <span className="total-cost">
-                              ({formatCurrency(item.cost * item.quantity)} total)
+                              ({formatCurrency(item.price * item.quantity)} total)
                             </span>
                           )}
                         </span>
                       )}
-                      {item.purchaseDate && (
+                      {item.lastPurchased && (
                         <span className="material-detail date">
-                          Purchased {formatDate(item.purchaseDate)}
+                          Purchased {formatDate(item.lastPurchased)}
                         </span>
                       )}
                     </div>
@@ -421,9 +432,9 @@ function Materials() {
                     </button>
                     <div className="purchase-menu">
                       <div className="purchase-menu-header">Buy from:</div>
-                      {item.purchaseLink && (
+                      {item.purchaseUrl && (
                         <a
-                          href={item.purchaseLink}
+                          href={item.purchaseUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="purchase-link saved"
@@ -475,7 +486,7 @@ function Materials() {
 
                   <button
                     className="action-btn remove"
-                    onClick={() => removeItem(item.id, activeTab)}
+                    onClick={() => removeItem(item.id)}
                     title="Remove"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -496,7 +507,7 @@ function Materials() {
           {CATEGORIES.map(cat => {
             const items = currentList.filter(i => i.category === cat.key)
             if (items.length === 0) return null
-            const value = items.reduce((sum, i) => sum + ((i.cost || 0) * (i.quantity || 1)), 0)
+            const value = items.reduce((sum, i) => sum + ((i.price || 0) * (i.quantity || 1)), 0)
             return (
               <div key={cat.key} className="category-stat">
                 <div className="category-stat-icon">{cat.icon}</div>
@@ -674,11 +685,11 @@ function Materials() {
               </div>
 
               <div className="form-actions">
-                <button type="button" className="action-btn" onClick={() => setShowAddModal(false)}>
+                <button type="button" className="action-btn" onClick={() => setShowAddModal(false)} disabled={isSaving}>
                   Cancel
                 </button>
-                <button type="submit" className="action-btn primary">
-                  {editingItem ? 'Save Changes' : 'Add Item'}
+                <button type="submit" className="action-btn primary" disabled={isSaving}>
+                  {isSaving ? 'Saving...' : (editingItem ? 'Save Changes' : 'Add Item')}
                 </button>
               </div>
             </form>

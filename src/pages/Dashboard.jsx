@@ -1,4 +1,7 @@
 import { useState, useMemo } from 'react'
+import { useMutation } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import { useAuth } from '../context/AuthContext'
 import { usePieces } from '../hooks/usePieces'
 import PieceCard from '../components/PieceCard'
 import PieceModal from '../components/PieceModal'
@@ -13,7 +16,9 @@ const FILTERS = [
 ]
 
 function Dashboard() {
+  const { sessionToken } = useAuth()
   const { pieces, addPiece, updatePiece, deletePiece, addNote, deleteNote, addImage, deleteImage } = usePieces()
+  const createArtwork = useMutation(api.artworks.create)
   const [activeFilter, setActiveFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingPiece, setEditingPiece] = useState(null)
@@ -35,14 +40,46 @@ function Dashboard() {
     setModalOpen(true)
   }
 
-  const handleSavePiece = (pieceData) => {
-    if (editingPiece) {
-      updatePiece(editingPiece.id, pieceData)
-    } else {
-      addPiece(pieceData)
+  const handleSavePiece = async (pieceData) => {
+    try {
+      let pieceId = editingPiece?.id
+
+      if (editingPiece) {
+        await updatePiece(editingPiece.id, {
+          title: pieceData.title,
+          deadline: pieceData.deadline,
+          status: pieceData.status,
+          type: pieceData.type,
+        })
+      } else {
+        const result = await addPiece(pieceData)
+        pieceId = result.id
+      }
+
+      // Handle notes - add new notes that don't exist yet
+      if (pieceData.notes && pieceId) {
+        const existingNoteIds = editingPiece?.notes?.map(n => n.id) || []
+        for (const note of pieceData.notes) {
+          if (!existingNoteIds.includes(note.id) && note.text.trim()) {
+            await addNote(pieceId, note.text)
+          }
+        }
+      }
+
+      // Handle images - upload new images
+      if (pieceData.images && pieceId) {
+        for (const img of pieceData.images) {
+          if (img.isNew && img.file) {
+            await addImage(pieceId, { file: img.file, caption: img.caption })
+          }
+        }
+      }
+
+      setModalOpen(false)
+      setEditingPiece(null)
+    } catch (error) {
+      console.error('Failed to save piece:', error)
     }
-    setModalOpen(false)
-    setEditingPiece(null)
   }
 
   const handleDeletePiece = (id) => {
@@ -59,26 +96,29 @@ function Dashboard() {
     setMoveToInventoryPiece(piece)
   }
 
-  const handleConfirmMoveToInventory = (inventoryData) => {
-    // Add to inventory
-    const artworks = JSON.parse(localStorage.getItem('artworks') || '[]')
-    const newArtwork = {
-      id: Date.now(),
-      title: inventoryData.title,
-      medium: inventoryData.medium,
-      yearCompleted: inventoryData.yearCompleted,
-      price: inventoryData.price,
-      location: inventoryData.location,
-      thumbnailUrl: inventoryData.thumbnailUrl || 'https://picsum.photos/seed/' + Date.now() + '/300/300',
-      highResUrl: inventoryData.highResUrl || inventoryData.thumbnailUrl || 'https://picsum.photos/seed/' + Date.now() + '/2000/2000',
-      archived: false,
-    }
-    artworks.unshift(newArtwork)
-    localStorage.setItem('artworks', JSON.stringify(artworks))
+  const handleConfirmMoveToInventory = async (inventoryData) => {
+    if (!sessionToken) return
 
-    // Remove from pieces
-    deletePiece(moveToInventoryPiece.id)
-    setMoveToInventoryPiece(null)
+    try {
+      // Add to inventory via Convex
+      await createArtwork({
+        sessionToken,
+        title: inventoryData.title,
+        medium: inventoryData.medium,
+        yearCompleted: inventoryData.yearCompleted,
+        price: inventoryData.price,
+        location: inventoryData.location,
+        thumbnailUrl: inventoryData.thumbnailUrl || `https://picsum.photos/seed/${Date.now()}/300/300`,
+        highResUrl: inventoryData.highResUrl || inventoryData.thumbnailUrl || `https://picsum.photos/seed/${Date.now()}/2000/2000`,
+        archived: false,
+      })
+
+      // Remove from pieces
+      deletePiece(moveToInventoryPiece.id)
+      setMoveToInventoryPiece(null)
+    } catch (error) {
+      console.error('Failed to move to inventory:', error)
+    }
   }
 
   return (
